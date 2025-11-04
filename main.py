@@ -2,6 +2,7 @@ import time
 import random
 from machine import Pin, PWM, UART
 
+prev_dist = 100  # Initialize previous distance
 # Define motor pins
 ENA = PWM(Pin(2))
 IN1 = Pin(3, Pin.OUT)# Motor A pin 5
@@ -36,17 +37,27 @@ def backward():
     IN3.off()
     IN4.on()
 
-def left():
+def turn_left():
     IN1.on()
     IN2.off()
     IN3.off()
     IN4.on()
 
-def right():
+def turn_right():
     IN1.off()
     IN2.on()
     IN3.on()
     IN4.off()
+
+def left():
+    turn_left()
+    time.sleep(0.2)  # Turn for half a second
+    forward()
+
+def right():
+    turn_right()
+    time.sleep(0.2)  # Turn for half a second
+    forward()
 
 def stop():
     IN1.off()
@@ -76,6 +87,8 @@ def get_distance():
 # --- Main loop ---
 try:
     uart.read()  # Clear any existing data
+    current_movement = None  # Track current movement state
+    
     while True:
         # Check Bluetooth commands
         if uart.any():
@@ -101,26 +114,24 @@ try:
                         if not text_sanitized:
                             print("No printable characters after sanitizing")
                         else:
-                            # Prefer first alphanumeric/command-like char; fallback to last
-                            # cmd_char = next((c for c in text_sanitized if c.isalnum()), text_sanitized[-1])
-                            # print("Command char chosen:", repr(cmd_char), "ASCII:", ord(cmd_char))
-
-                            # # Normalize to uppercase to accept lowercase input too
+                            # Update movement based on new command
                             cmd = text_sanitized
                             if cmd == 'F':
-                                forward()
-                                print("Moving Forward")
+                                current_movement = forward
+                                print("Set continuous Forward movement")
                             elif cmd == 'B':
-                                backward()
-                                print("Moving Backward")
+                                current_movement = backward
+                                print("Set continuous Backward movement")
                             elif cmd == 'L':
-                                left()
-                                print("Turning Left")
+                                left()  # This will turn left and set to forward
+                                current_movement = forward
+                                print("Turned Left and moving Forward")
                             elif cmd == 'R':
-                                right()
-                                print("Turning Right")
+                                right()  # This will turn right and set to forward
+                                current_movement = forward
+                                print("Turned Right and moving Forward")
                             elif cmd == 'S':
-                                stop()
+                                current_movement = stop
                                 print("Stopped")
                             else:
                                 print("Unknown command:", repr(cmd))
@@ -132,26 +143,24 @@ try:
             except Exception as e:
                 print("Error processing data:", e)
 
-        else:
-            # Autonomous mode (fallback)
-            dist = get_distance()
-            print("Distance:", dist, "cm")
-
-            if dist < 40:
-                stop()
-                time.sleep(0.2)
-                turn_dir = random.choice(["left", "right"])  # type: ignore
-                print("Obstacle detected! Turning", turn_dir)
-                if turn_dir == "left":
-                    left()
-                else:
-                    right()
-                time.sleep(0.4)
-                stop()
-                time.sleep(0.2)
-            else:
-                forward()
-
+        
+        # Execute current movement if set
+        if current_movement:
+            current_movement()
+            
+            # If not stopped or moving backward, switch to forward movement
+            if current_movement not in [stop, backward]:
+                current_movement = forward
+            
+            # If moving forward, check for obstacles
+            if current_movement == forward:
+                dist = get_distance()
+                if dist < 20 and prev_dist < 20:
+                    print("Obstacle detected at", dist, "cm - Stopping!")
+                    stop()
+                    current_movement = stop
+                prev_dist = dist  # Update previous distance
+        
         time.sleep(0.05)
 
 except KeyboardInterrupt:

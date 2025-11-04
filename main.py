@@ -1,6 +1,6 @@
 import time
 import random
-from machine import Pin, PWM
+from machine import Pin, PWM, UART
 
 # Define motor pins
 ENA = PWM(Pin(2))
@@ -10,14 +10,16 @@ IN3 = Pin(5, Pin.OUT)# Motor B pin 7
 IN4 = Pin(6, Pin.OUT)# Motor B pin 9
 ENB = PWM(Pin(7))
 
+uart = UART(0, baudrate=9600, tx=Pin(0), rx=Pin(1), bits=8, parity=None, stop=1)  # UART0 on pins GP0, GP1
+
 # Define HC-SR04 pins
 TRIG = Pin(27, Pin.OUT) # pin 31
 ECHO = Pin(28, Pin.IN) # pin 34
 
 # Set motor speed (0–65025)
-speed = 30000
-ENA.freq(1000)
-ENB.freq(1000)
+speed = 1000
+ENA.freq(500)
+ENB.freq(500)
 ENA.duty_u16(speed)
 ENB.duty_u16(speed)
 
@@ -73,27 +75,82 @@ def get_distance():
 
 # --- Main loop ---
 try:
+    uart.read()  # Clear any existing data
     while True:
-        dist = get_distance()
-        print("Distance:", dist, "cm")
+        # Check Bluetooth commands
+        if uart.any():
+            try:
+                # Read all available data
+                data = uart.read()
+                if data:
+                    # Show exact raw bytes so we can see control characters
+                    print("Raw bytes received:", [hex(b) for b in data])
+                    print("Length of data:", len(data))
+                    try:
+                        # decode but ignore undecodable bytes so we can still inspect
+                        text = data.decode('ascii', 'ignore')
+                        print("As text:", repr(text))
+                        print("ASCII values:", [ord(c) for c in text])
 
-        if dist < 40:  # If object detected within 10 cm
-            stop()
-            time.sleep(0.2)
-            turn_dir = random.choice(["left", "right"])  # type: ignore
-            print("Obstacle detected! Turning", turn_dir)
+                        # Sanitize: remove common control characters first (CR/LF)
+                        text = text.replace('\r', '').replace('\n', '')
+                        # Keep only printable ASCII characters (32..126) — works on MicroPython
+                        text_sanitized = ''.join(c for c in text if 32 <= ord(c) <= 126)
+                        print("Sanitized text:", repr(text_sanitized))
 
-            if turn_dir == "left":
-                left()
-            else:
-                right()
+                        if not text_sanitized:
+                            print("No printable characters after sanitizing")
+                        else:
+                            # Prefer first alphanumeric/command-like char; fallback to last
+                            # cmd_char = next((c for c in text_sanitized if c.isalnum()), text_sanitized[-1])
+                            # print("Command char chosen:", repr(cmd_char), "ASCII:", ord(cmd_char))
 
-            time.sleep(0.4)  # Turn time
-            stop()
-            time.sleep(0.2)
+                            # # Normalize to uppercase to accept lowercase input too
+                            cmd = text_sanitized
+                            if cmd == 'F':
+                                forward()
+                                print("Moving Forward")
+                            elif cmd == 'B':
+                                backward()
+                                print("Moving Backward")
+                            elif cmd == 'L':
+                                left()
+                                print("Turning Left")
+                            elif cmd == 'R':
+                                right()
+                                print("Turning Right")
+                            elif cmd == 'S':
+                                stop()
+                                print("Stopped")
+                            else:
+                                print("Unknown command:", repr(cmd))
+                    except UnicodeError:
+                        print("Could not decode as ASCII")
+            except UnicodeError as e:
+                print("Error decoding data:", e)
+                print("Raw data:", data)
+            except Exception as e:
+                print("Error processing data:", e)
 
         else:
-            forward()
+            # Autonomous mode (fallback)
+            dist = get_distance()
+            print("Distance:", dist, "cm")
+
+            if dist < 40:
+                stop()
+                time.sleep(0.2)
+                turn_dir = random.choice(["left", "right"])  # type: ignore
+                print("Obstacle detected! Turning", turn_dir)
+                if turn_dir == "left":
+                    left()
+                else:
+                    right()
+                time.sleep(0.4)
+                stop()
+                time.sleep(0.2)
+            else:
+                forward()
 
         time.sleep(0.05)
 

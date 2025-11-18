@@ -59,35 +59,57 @@ A MicroPython-based robot car project for Raspberry Pi Pico 2W with Bluetooth co
 
 ## Software Requirements
 
+- **Visual Studio Code** (VS Code)
+- **MicroPico Extension** for VS Code
 - **MicroPython** (latest version recommended)
-- **Thonny IDE** or similar MicroPython-compatible IDE
 - **Bluetooth Serial Terminal** app on your mobile device (e.g., Serial Bluetooth Terminal for Android)
 
 ## Installation
 
-### 1. Install MicroPython on Pico 2W
+### 1. Install VS Code and MicroPico Extension
+
+1. Download and install [Visual Studio Code](https://code.visualstudio.com/)
+2. Open VS Code and go to Extensions (Ctrl+Shift+X or Cmd+Shift+X on Mac)
+3. Search for "MicroPico" and install the extension by paulober
+4. Restart VS Code if prompted
+
+### 2. Install MicroPython on Pico 2W
 
 1. Download the latest MicroPython firmware for Pico W from [micropython.org](https://micropython.org/download/rp2-pico-w/)
-2. Hold the BOOTSEL button on the Pico while connecting it to your computer
-3. Copy the `.uf2` firmware file to the RPI-RP2 drive that appears
-4. The Pico will reboot automatically with MicroPython installed
+2. Hold the BOOTSEL button on the Pico while connecting it to your computer via USB
+3. The Pico will appear as a USB mass storage device (RPI-RP2)
+4. Copy the `.uf2` firmware file to the RPI-RP2 drive
+5. The Pico will reboot automatically with MicroPython installed
 
-### 2. Upload Project Files
+### 3. Configure MicroPico in VS Code
 
-Using Thonny IDE or similar:
+1. Open your project folder in VS Code (File → Open Folder)
+2. Connect your Pico to the computer via USB
+3. Open the Command Palette (Ctrl+Shift+P or Cmd+Shift+P on Mac)
+4. Type "MicroPico: Configure Project" and select it
+5. Follow the prompts to select your Pico device
+6. The extension will create a `.micropico` folder with configuration
 
-1. Open Thonny and select "MicroPython (Raspberry Pi Pico)" as the interpreter
-2. Upload the following files to the Pico:
-   - `main.py` - Main robot control program
+### 4. Upload Project Files to Pico
+
+1. In VS Code, ensure your Pico is connected and recognized by MicroPico
+2. Right-click on `main.py` in the Explorer and select "Upload current file to Pico"
+3. Repeat for other files:
    - `bt_reset.py` - Bluetooth module reset utility (optional)
    - `detect_baudrate.py` - Baudrate detection utility (optional)
+4. Alternatively, you can upload the entire project:
+   - Open Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
+   - Select "MicroPico: Upload project to Pico"
 
-### 3. Configure Bluetooth Module (if needed)
+### 5. Configure Bluetooth Module (if needed)
 
 If your HC-05/HC-06 module needs configuration:
 
+1. Open the MicroPico terminal in VS Code (View → Terminal or use MicroPico status bar)
+2. Connect to your Pico's REPL
+3. Run the following commands:
+
 ```python
-# Run in Thonny REPL or upload and execute
 import bt_reset
 
 # Test AT communication
@@ -121,8 +143,9 @@ bt_reset.send_at('AT+UART=9600,0,0')
 
 To make `main.py` run automatically when the Pico powers on:
 
-1. Rename `main.py` to `main.py` (it should already have this name)
-2. The Pico will automatically execute `main.py` on boot
+1. The file is already named `main.py` - MicroPython automatically executes this file on boot
+2. Ensure `main.py` is uploaded to the root directory of the Pico
+3. You can verify by opening the MicroPico file explorer in VS Code
 
 ### Baudrate Detection
 
@@ -136,11 +159,20 @@ If you're unsure about your Bluetooth module's baud rate:
 
 ### Debugging
 
-Monitor the serial output in Thonny's REPL to see:
-- Raw bytes received from Bluetooth
-- Decoded commands
-- Motor states
-- Error messages
+Monitor the serial output using MicroPico's integrated terminal in VS Code:
+
+1. Open the Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
+2. Select "MicroPico: Connect"
+3. The terminal will show:
+   - Raw bytes received from Bluetooth
+   - Decoded commands
+   - Motor states
+   - Error messages
+
+You can also use the MicroPico REPL to:
+- Test individual functions interactively
+- Check variable values in real-time
+- Run diagnostic commands
 
 ## Configuration
 
@@ -182,8 +214,9 @@ Uncomment the HC-SR04 related code in `main.py`:
 ### Motors Not Working
 - Check motor driver connections and power supply
 - Verify PWM pins are correctly configured
-- Test individual motor functions in REPL
+- Test individual motor functions in MicroPico REPL (use Command Palette → "MicroPico: Connect")
 - Check motor driver enable pins
+- Verify sufficient power supply for motors (separate from Pico power if needed)
 
 ### No Response to Commands
 - Monitor REPL for incoming data

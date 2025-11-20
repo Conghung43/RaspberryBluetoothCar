@@ -1,8 +1,9 @@
 from machine import UART, Pin
 import time
+from utils import _parse_hc05_frames, FRAME_LENGTH
 
 # Common baud rates to test
-baud_rates = [9600, 38400, 57600, 115200]
+baud_rates = [9600]
 
 def test_baud_rate(baud):
     uart = UART(0, baudrate=baud, tx=Pin(0), rx=Pin(1), bits=8, parity=None, stop=1)
@@ -11,20 +12,29 @@ def test_baud_rate(baud):
     # Clear any existing data
     uart.read()
     
-    timeout = time.time() + 5  # 5 second timeout
+    timeout = time.time() + 10005  # 5 second timeout
     while time.time() < timeout:
         if uart.any():
             data = uart.read()
             if data:
-                print(f"Received at {baud} baud:")
-                print("Raw bytes:", [hex(b) for b in data])
-                try:
-                    text = data.decode('ascii')
-                    print("As text:", text)
-                    print("ASCII values:", [ord(c) for c in text])
-                except:
-                    print("Could not decode as ASCII")
-            return True
+                print("Received data:", data)
+                binary_cmds = _parse_hc05_frames(data)
+                if binary_cmds:
+                    for cmd in binary_cmds:
+                        print("Parsed HC-05 frame cmd:", cmd)
+                        if cmd == 'F':
+                            
+                            print("Set continuous Forward movement")
+                        elif cmd == 'B':
+                            
+                            print("Set continuous Backward movement")
+                        elif cmd == 'L':
+                            print("Scheduled Left turn then Forward")
+                        elif cmd == 'R':
+                            print("Scheduled Right turn then Forward")
+                    # Skip ASCII path if we consumed binary frames
+                    continue
+            # return True
     return False
 
 print("Starting baudrate detection...")

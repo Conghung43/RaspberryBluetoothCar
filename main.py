@@ -1,8 +1,8 @@
-import time
-import random
 from machine import Pin, PWM, UART
+from utils import _parse_hc05_frames, FRAME_LENGTH, MotorController
 
 prev_dist = 100  # Initialize previous distance
+
 # Define motor pins (use PWM on direction pins so we can control speed per direction)
 # Note: for L9110 style drivers we PWM the active direction pin and keep the opposite pin 0.
 ENA = PWM(Pin(2))  # kept for compatibility if your board has an enable pin (unused by L9110)
@@ -13,7 +13,13 @@ IN3_pwm = PWM(Pin(5))  # Motor B input 1 (was IN3)
 IN4_pwm = PWM(Pin(6))  # Motor B input 2 (was IN4)
 ENB = PWM(Pin(7))
 
-uart = UART(0, baudrate=9600, tx=Pin(0), rx=Pin(1), bits=8, parity=None, stop=1)  # UART0 on pins GP0, GP1
+# Move UART away from motor pins to reduce electrical interference
+uart = UART(0, baudrate=9600, tx=Pin(16), rx=Pin(17), bits=8, parity=None, stop=1)  # UART0 on pins GP16, GP17
+
+# --- HC-05 binary frame parsing ---
+# Frames are 8 bytes: 0xff 0x1 0x1 0x1 0x2 0x0 <dir_code> 0x0
+# dir_code: 0x1=Forward, 0x2=Backward, 0x4=Left, 0x8=Right
+
 
 # Define HC-SR04 pins
 # TRIG = Pin(27, Pin.OUT) # pin 31
@@ -21,8 +27,9 @@ uart = UART(0, baudrate=9600, tx=Pin(0), rx=Pin(1), bits=8, parity=None, stop=1)
 
 # PWM and default speed settings
 # Duty range: 0..65535 (use duty_u16). DEFAULT_SPEED is a safe starting value you can change.
-DEFAULT_SPEED = 40000
-PWM_FREQ = 1500
+DEFAULT_SPEED = 60000  # Increased for faster movement (max: 65535)
+# Reduced PWM frequency to minimize EMI interference with UART
+PWM_FREQ = 2000
 
 # Configure PWM frequency for all PWM pins
 ENA.freq(PWM_FREQ)
@@ -38,167 +45,56 @@ IN2_pwm.duty_u16(0)
 IN3_pwm.duty_u16(0)
 IN4_pwm.duty_u16(0)
 
-# --- Motor control functions ---
-def set_duty(pwm_obj, u16):
-    """Set duty safely (0..65535)."""
-    pwm_obj.duty_u16(max(0, min(65535, int(u16))))
-
-# Motor A helpers (IN1_pwm / IN2_pwm)
-def motorA_forward(u16=DEFAULT_SPEED+PWM_FREQ):
-    set_duty(IN2_pwm, 0)
-    set_duty(IN1_pwm, u16)
-
-def motorA_backward(u16=DEFAULT_SPEED+PWM_FREQ):
-    set_duty(IN1_pwm, 0)
-    set_duty(IN2_pwm, u16)
-
-def motorA_stop():
-    set_duty(IN1_pwm, 0)
-    set_duty(IN2_pwm, 0)
-
-# Motor B helpers (IN3_pwm / IN4_pwm)
-def motorB_forward(u16=DEFAULT_SPEED):
-    set_duty(IN4_pwm, 0)
-    set_duty(IN3_pwm, u16)
-
-def motorB_backward(u16=DEFAULT_SPEED):
-    set_duty(IN3_pwm, 0)
-    set_duty(IN4_pwm, u16)
-
-def motorB_stop():
-    set_duty(IN3_pwm, 0)
-    set_duty(IN4_pwm, 0)
-
-def forward():
-    motorA_forward()
-    motorB_forward()
-
-def backward():
-    motorA_backward()
-    motorB_backward()
-
-def turn_left():
-    # Spin in place: A forward, B backward
-    motorA_forward()
-    motorB_backward()
-
-def turn_right():
-    # Spin in place: A backward, B forward
-    motorA_backward()
-    motorB_forward()
-
-def left():
-    turn_left()
-    time.sleep(0.2)  # Turn for a short duration
-    forward()
-
-def right():
-    turn_right()
-    time.sleep(0.2)  # Turn for a short duration
-    forward()
-
-def stop():
-    motorA_stop()
-    motorB_stop()
-
-# --- Distance measurement function ---
-# def get_distance():
-#     TRIG.low()
-#     time.sleep_us(2)
-#     TRIG.high()
-#     time.sleep_us(10)
-#     TRIG.low()
-
-#     # Wait for echo start
-#     while ECHO.value() == 0:
-#         signaloff = time.ticks_us()
-#     # Wait for echo end
-#     while ECHO.value() == 1:
-#         signalon = time.ticks_us()
-
-#     timepassed = time.ticks_diff(signalon, signaloff)
-#     distance = (timepassed * 0.0343) / 2  # cm
-#     return distance
+# Initialize the independent motor controller
+motor = MotorController(IN1_pwm, IN2_pwm, IN3_pwm, IN4_pwm, DEFAULT_SPEED)
+pre_cmd = 'F'
 
 # --- Main loop ---
-try:
+def main():
     uart.read()  # Clear any existing data
-    current_movement = None  # Track current movement state
+    
+    state_names = {
+        'F': 'Forward', 
+        'B': 'Backward', 
+        'L': 'Left turn', 
+        'R': 'Right turn', 
+        'S': 'Stopped'
+    }
     
     while True:
-        # Check Bluetooth commands
+        # Check Bluetooth commands (non-blocking)
         if uart.any():
             try:
                 # Read all available data
-                data = uart.read()
+                data = uart.read(FRAME_LENGTH)
                 if data:
-                    # Show exact raw bytes so we can see control characters
-                    print("Raw bytes received:", [hex(b) for b in data])
+                    print("Raw bytes received:", data)
                     print("Length of data:", len(data))
-                    try:
-                        # decode but ignore undecodable bytes so we can still inspect
-                        text = data.decode('ascii', 'ignore')
-                        print("As text:", repr(text))
-                        print("ASCII values:", [ord(c) for c in text])
-
-                        # Sanitize: remove common control characters first (CR/LF)
-                        text = text.replace('\r', '').replace('\n', '')
-                        # Keep only printable ASCII characters (32..126) — works on MicroPython
-                        text_sanitized = ''.join(c for c in text if 32 <= ord(c) <= 126)
-                        print("Sanitized text:", repr(text_sanitized))
-
-                        if not text_sanitized:
-                            print("No printable characters after sanitizing")
-                        else:
-                            # Update movement based on new command
-                            cmd = text_sanitized
-                            if cmd == 'F':
-                                current_movement = forward
-                                print("Set continuous Forward movement")
-                            elif cmd == 'B':
-                                current_movement = backward
-                                print("Set continuous Backward movement")
-                            elif cmd == 'L':
-                                left()  # This will turn left and set to forward
-                                current_movement = forward
-                                print("Turned Left and moving Forward")
-                            elif cmd == 'R':
-                                right()  # This will turn right and set to forward
-                                current_movement = forward
-                                print("Turned Right and moving Forward")
-                            elif cmd == 'S':
-                                current_movement = stop
-                                print("Stopped")
+                    
+                    # Parse frames independently
+                    binary_cmds = _parse_hc05_frames(data)
+                    
+                    if binary_cmds:
+                        # Process each command
+                        for cmd in binary_cmds:
+                            print("Parsed HC-05 frame cmd:", cmd)
+                            
+                            if cmd == 'E':
+                                # Update motor state (motor controller handles execution)
+                                if motor.update_state(pre_cmd):
+                                    print(f"State changed to: {state_names[pre_cmd]}")
+                                pre_cmd = 'E'
                             else:
-                                print("Unknown command:", repr(cmd))
-                    except UnicodeError:
-                        print("Could not decode as ASCII")
+                                pre_cmd = cmd
+                            
             except UnicodeError as e:
                 print("Error decoding data:", e)
                 print("Raw data:", data)
             except Exception as e:
                 print("Error processing data:", e)
-
         
-        # Execute current movement if set
-        if current_movement:
-            current_movement()
-            
-            # If not stopped or moving backward, switch to forward movement
-            if current_movement not in [stop, backward]:
-                current_movement = forward
-            
-            # If moving forward, check for obstacles
-            # if current_movement == forward:
-            #     dist = get_distance()
-            #     if dist < 20 and prev_dist < 20:
-            #         print("Obstacle detected at", dist, "cm - Stopping!")
-            #         stop()
-            #         current_movement = stop
-            #     prev_dist = dist  # Update previous distance
-        
-        time.sleep(0.05)
+        # Motor controller maintains its own state,
+        # no need to continuously call execute_movement here
 
-except KeyboardInterrupt:
-    stop()
-    print("Program stopped")
+if __name__ == '__main__':
+    main()

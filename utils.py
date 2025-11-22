@@ -1,4 +1,4 @@
-
+import time
 
 _HEADER_PATTERN = b"\xff\x01\x01\x01\x02\x00"  # first 6 bytes
 _DIR_INDEX = 6
@@ -103,22 +103,36 @@ class MotorController:
         self.set_duty(self.IN4_pwm, 0)
     
     def forward(self):
+        # Start with a high-speed burst to avoid stalling
+        self.motorA_forward(65535)  # Max speed
+        self.motorB_forward(65535)  # Max speed
+        time.sleep(0.1)  # Short burst duration
         self.motorA_forward()
         self.motorB_forward()
-    
+
     def backward(self):
+        # Start with a high-speed burst to avoid stalling
+        self.motorA_backward(65535)  # Max speed
+        self.motorB_backward(65535)  # Max speed
+        time.sleep(0.1)  # Short burst duration
         self.motorA_backward()
         self.motorB_backward()
-    
+
     def turn_left(self):
-        # Spin in place: A forward, B backward
-        self.motorA_forward(self.default_speed/2)
+        # Start with a high-speed burst to avoid stalling
+        self.motorA_forward(65535)  # Max speed
+        self.motorB_stop()  # Max speed
+        time.sleep(0.1)  # Short burst duration
+        self.motorA_forward()
         self.motorB_stop()
-    
+
     def turn_right(self):
-        # Spin in place: A backward, B forward
+        # Start with a high-speed burst to avoid stalling
+        self.motorA_stop()  # Max speed
+        self.motorB_forward(65535)  # Max speed
+        time.sleep(0.1)  # Short burst duration
         self.motorA_stop()
-        self.motorB_forward( self.default_speed/2)
+        self.motorB_forward()
     
     def stop(self):
         self.motorA_stop()

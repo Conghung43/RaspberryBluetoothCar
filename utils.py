@@ -71,13 +71,13 @@ class MotorController:
     # Motor A helpers (IN1_pwm / IN2_pwm)
     def motorA_forward(self, u16=None):
         if u16 is None:
-            u16 = self.default_speed + 1500
+            u16 = self.default_speed
         self.set_duty(self.IN2_pwm, 0)
         self.set_duty(self.IN1_pwm, u16)
     
     def motorA_backward(self, u16=None):
         if u16 is None:
-            u16 = self.default_speed + 1500
+            u16 = self.default_speed
         self.set_duty(self.IN1_pwm, 0)
         self.set_duty(self.IN2_pwm, u16)
     
@@ -106,7 +106,7 @@ class MotorController:
         # Start with a high-speed burst to avoid stalling
         self.motorA_forward(65535)  # Max speed
         self.motorB_forward(65535)  # Max speed
-        time.sleep(0.1)  # Short burst duration
+        time.sleep(0.2)  # Short burst duration
         self.motorA_forward()
         self.motorB_forward()
 
@@ -114,7 +114,7 @@ class MotorController:
         # Start with a high-speed burst to avoid stalling
         self.motorA_backward(65535)  # Max speed
         self.motorB_backward(65535)  # Max speed
-        time.sleep(0.1)  # Short burst duration
+        time.sleep(0.2)  # Short burst duration
         self.motorA_backward()
         self.motorB_backward()
 
@@ -122,7 +122,7 @@ class MotorController:
         # Start with a high-speed burst to avoid stalling
         self.motorA_forward(65535)  # Max speed
         self.motorB_stop()  # Max speed
-        time.sleep(0.1)  # Short burst duration
+        time.sleep(0.2)  # Short burst duration
         self.motorA_forward()
         self.motorB_stop()
 
@@ -130,7 +130,7 @@ class MotorController:
         # Start with a high-speed burst to avoid stalling
         self.motorA_stop()  # Max speed
         self.motorB_forward(65535)  # Max speed
-        time.sleep(0.1)  # Short burst duration
+        time.sleep(0.2)  # Short burst duration
         self.motorA_stop()
         self.motorB_forward()
     
